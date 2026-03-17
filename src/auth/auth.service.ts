@@ -11,16 +11,20 @@ import { AuthMethod } from '@prisma/__generated__/enums';
 import { verify } from 'argon2';
 import { Request, Response } from 'express';
 
+import { PrismaService } from '@/prisma/prisma.service';
 import { UserService } from '@/user/user.service';
 
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ProviderService } from './provider/provider.service';
 
 @Injectable()
 export class AuthService {
   public constructor(
+    private readonly prismaService: PrismaService,
     private readonly userService: UserService,
     private readonly configService: ConfigService,
+    private readonly providerSrvice: ProviderService,
   ) {}
 
   public async register(req: Request, dto: RegisterDto) {
@@ -53,6 +57,51 @@ export class AuthService {
 
     if (!isValidPassword) {
       throw new UnauthorizedException('Неверный пароль');
+    }
+
+    return this.saveSession(req, user);
+  }
+
+  public async extractProfileFromCode(req: Request, provider: string, code: string) {
+    const providerInstance = this.providerSrvice.findByService(provider);
+    if (!providerInstance) {
+      throw new InternalServerErrorException('Не удалось авторизоваться');
+    }
+    const profile = await providerInstance.findUserByCode(code);
+
+    const account = await this.prismaService.account.findFirst({
+      where: {
+        id: profile.id,
+        provider: profile.provider,
+      },
+    });
+
+    let user = account?.userId ? await this.userService.findById(account.userId) : null;
+
+    if (user) {
+      return this.saveSession(req, user);
+    }
+
+    user = await this.userService.create({
+      email: profile.email,
+      displayName: profile.name,
+      password: '',
+      picture: profile.picture,
+      method: AuthMethod[profile.provider.toUpperCase()],
+      isVerified: true,
+    });
+
+    if (!account) {
+      await this.prismaService.account.create({
+        data: {
+          userId: user.id,
+          type: 'oauth',
+          provider: profile.provider,
+          accessToken: profile.access_token,
+          refreshToken: profile.refresh_token,
+          expiresAt: profile.expires_at ?? 0,
+        },
+      });
     }
 
     return this.saveSession(req, user);
