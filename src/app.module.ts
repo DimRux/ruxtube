@@ -7,6 +7,10 @@ import { IS_DEV_ENV } from './libs/common/utils/isDev';
 import { PrismaModule } from './prisma/prisma.module';
 import { UserModule } from './user/user.module';
 
+import { EmailConfirmationModule } from './auth/email-confirmation/email-confirmation.module';
+import { PasswordRecoveryModule } from './auth/password-recovery/password-recovery.module';
+import { TwoFactorAuthModule } from './auth/two-factor-auth/two-factor-auth.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ ignoreEnvFile: !IS_DEV_ENV, expandVariables: true, isGlobal: true }),
@@ -14,6 +18,9 @@ import { UserModule } from './user/user.module';
     UserModule,
     AuthModule,
     ProviderModule,
+    EmailConfirmationModule,
+    PasswordRecoveryModule,
+    TwoFactorAuthModule,
   ],
 })
 export class AppModule {}

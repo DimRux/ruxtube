@@ -16,7 +16,9 @@ import { UserService } from '@/user/user.service';
 
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { EmailConfirmationService } from './email-confirmation/email-confirmation.service';
 import { ProviderService } from './provider/provider.service';
+import { TwoFactorAuthService } from './two-factor-auth/two-factor-auth.service';
 
 @Injectable()
 export class AuthService {
@@ -25,6 +27,8 @@ export class AuthService {
     private readonly userService: UserService,
     private readonly configService: ConfigService,
     private readonly providerSrvice: ProviderService,
+    private readonly emailConfirmationService: EmailConfirmationService,
+    private readonly twoFactorAuthService: TwoFactorAuthService,
   ) {}
 
   public async register(req: Request, dto: RegisterDto) {
@@ -43,7 +47,12 @@ export class AuthService {
       isVerified: false,
     });
 
-    return this.saveSession(req, newUser);
+    await this.emailConfirmationService.sendVerificationToken(newUser.email);
+
+    return {
+      message:
+        'Вы успешно зарегистрировались. Пожалуйста, подтвердите ваш email. Сообщение было отправлено на ваш почтовый адрес.',
+    };
   }
 
   public async login(req: Request, dto: LoginDto) {
@@ -57,6 +66,25 @@ export class AuthService {
 
     if (!isValidPassword) {
       throw new UnauthorizedException('Неверный пароль');
+    }
+
+    if (!user.isVerified) {
+      await this.emailConfirmationService.sendVerificationToken(user.email);
+      throw new UnauthorizedException(
+        'Ваш email не подтвержден. Проверьте почту и подтвердите адрес',
+      );
+    }
+
+    if (user.isTwoFactorEnabled) {
+      if (!dto.code) {
+        await this.twoFactorAuthService.sendTwoFactorToken(user.email);
+
+        return {
+          message: 'Проверте вашу почту. Требуется код двухфакторной аутентификации.',
+        };
+      }
+
+      await this.twoFactorAuthService.validateTwoFactorToken(user.email, dto.code);
     }
 
     return this.saveSession(req, user);
@@ -110,7 +138,6 @@ export class AuthService {
   public async logout(req: Request, res: Response): Promise<void> {
     return new Promise((resolve, reject) => {
       req.session.destroy((error) => {
-        console.log(error);
         if (error) {
           return reject(new InternalServerErrorException('Не удалось завершить сессию'));
         }
@@ -124,7 +151,6 @@ export class AuthService {
     return new Promise((resolve, reject) => {
       req.session.userId = user.id;
       req.session.save((error) => {
-        console.log(error);
         if (error) {
           return reject(new InternalServerErrorException('Не удалось сохранить сессию'));
         }

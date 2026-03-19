@@ -18,6 +18,16 @@
     },
     {
       "files": [
+        "*.tsx"
+      ],
+      "options": {
+        "parser": "typescript",
+        "jsxBracketSameLine": false,
+        "jsxSingleQuote": false
+      }
+    },
+    {
+      "files": [
         "*.json"
       ],
       "options": {
